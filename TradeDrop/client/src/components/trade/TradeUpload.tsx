@@ -41,7 +41,7 @@ export function TradeUpload({ onTradeAdded }: TradeUploadProps) {
         title: "Image Processed",
         description: "Trade details extracted successfully",
       })
-    } catch (error) {
+    } catch (error: Error | any) {
       console.error("Error processing image:", error)
       toast({
         title: "Processing Failed",

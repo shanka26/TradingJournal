@@ -1,252 +1,153 @@
-import { useState } from "react"
-import { Check, X, Edit3, Tag, Calendar, DollarSign } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { addTrade } from "@/api/trades"
-import { useToast } from "@/hooks/useToast"
+"use client";
 
-interface TradeConfirmationProps {
-  extractedData: any
-  image: File | null
-  onConfirm: () => void
-  onReject: () => void
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { saveTrade, TradePayload } from "@/api/trades";
+import { useToast } from "@/hooks/useToast";
+
+interface Props {
+  extractedData: TradePayload;
+  image: File | null;
+  onConfirm: () => void;
+  onReject: () => void;
 }
 
-export function TradeConfirmation({ extractedData, image, onConfirm, onReject }: TradeConfirmationProps) {
-  const [tradeData, setTradeData] = useState(extractedData)
-  const [notes, setNotes] = useState("")
-  const [tags, setTags] = useState<string[]>([])
-  const [newTag, setNewTag] = useState("")
-  const [saving, setSaving] = useState(false)
-  const { toast } = useToast()
+export function TradeConfirmation({ extractedData, image, onConfirm, onReject }: Props) {
+  const [open, setOpen] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<TradePayload>(extractedData);
+  const { toast } = useToast();
 
-  const isOption = tradeData.contractType === 'option' || ['call', 'put'].includes(tradeData.type)
+  const previewUrl = useMemo(() => (image ? URL.createObjectURL(image) : null), [image]);
 
-  const handleSave = async () => {
-    setSaving(true)
+  function update(path: (string | number)[], value: any) {
+    setForm(prev => {
+      const clone: any = structuredClone(prev);
+      let ref = clone;
+      for (let i = 0; i < path.length - 1; i++) ref = ref[path[i]];
+      ref[path[path.length - 1]] = value;
+      return clone;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
     try {
-      console.log("Saving trade:", tradeData)
-      await addTrade({
-        ...tradeData,
-        notes,
-        tags,
-        images: image ? [image] : [],
-        contractType: isOption ? 'option' : 'stock'
-      })
-      toast({
-        title: "Trade Saved",
-        description: "Your trade has been added to the journal",
-      })
-      onConfirm()
-    } catch (error) {
-      console.error("Error saving trade:", error)
-      toast({
-        title: "Save Failed",
-        description: error.message,
-        variant: "destructive",
-      })
+      await saveTrade(form);
+      toast({ title: "Trade saved", description: "Your trade has been added." });
+      setOpen(false);
+      onConfirm();
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e.message, variant: "destructive" });
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
-
-  const addTag = () => {
-    if (newTag.trim() && !tags.includes(newTag.trim())) {
-      setTags([...tags, newTag.trim()])
-      setNewTag("")
-    }
-  }
-
-  const removeTag = (tagToRemove: string) => {
-    setTags(tags.filter(tag => tag !== tagToRemove))
   }
 
   return (
-    <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Edit3 className="h-5 w-5 text-blue-500" />
-          Confirm Trade Details
-          {isOption && (
-            <Badge variant="secondary" className="ml-2">
-              Options
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="symbol">Symbol</Label>
-            <Input
-              id="symbol"
-              value={tradeData.symbol}
-              onChange={(e) => setTradeData({...tradeData, symbol: e.target.value})}
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="type">Type</Label>
-            <select
-              id="type"
-              value={tradeData.type}
-              onChange={(e) => {
-                const newType = e.target.value;
-                const newIsOption = ['call', 'put'].includes(newType);
-                setTradeData({
-                  ...tradeData, 
-                  type: newType,
-                  contractType: newIsOption ? 'option' : 'stock'
-                });
-              }}
-              className="w-full mt-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800"
-            >
-              <optgroup label="Stock">
-                <option value="buy">Buy</option>
-                <option value="sell">Sell</option>
-              </optgroup>
-              <optgroup label="Options">
-                <option value="call">Call Option</option>
-                <option value="put">Put Option</option>
-              </optgroup>
-            </select>
-          </div>
-        </div>
+    <Dialog open={open} onOpenChange={(v) => { if (!saving) { setOpen(v); if (!v) onReject(); } }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Confirm Trade Details</DialogTitle>
+        </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="quantity">
-              {isOption ? 'Contracts' : 'Quantity'}
-            </Label>
-            <Input
-              id="quantity"
-              type="number"
-              value={tradeData.quantity}
-              onChange={(e) => setTradeData({...tradeData, quantity: parseInt(e.target.value)})}
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="price">
-              {isOption ? 'Premium per Contract' : 'Price per Share'}
-            </Label>
-            <Input
-              id="price"
-              type="number"
-              step="0.01"
-              value={tradeData.price}
-              onChange={(e) => setTradeData({...tradeData, price: parseFloat(e.target.value)})}
-              className="mt-1"
-            />
-          </div>
-        </div>
-
-        {isOption && (
-          <div className="grid grid-cols-2 gap-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
             <div>
-              <Label htmlFor="strikePrice" className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Strike Price
-              </Label>
+              <Label>Symbol</Label>
+              <Input value={form.instrument.symbol ?? ""} onChange={(e) => update(["instrument","symbol"], e.target.value.toUpperCase())}/>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Asset Type</Label>
+                <Input value={form.instrument.assetType} onChange={(e) => update(["instrument","assetType"], e.target.value as any)} />
+              </div>
+              <div>
+                <Label>Side</Label>
+                <Input value={form.side} onChange={(e) => update(["side"], e.target.value as any)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Quantity</Label>
+                <Input type="number" value={form.quantity ?? 0} onChange={(e) => update(["quantity"], Number(e.target.value))}/>
+              </div>
+              <div>
+                <Label>Price</Label>
+                <Input type="number" step="0.01" value={form.price ?? 0} onChange={(e) => update(["price"], Number(e.target.value))}/>
+              </div>
+              <div>
+                <Label>Fees</Label>
+                <Input type="number" step="0.01" value={form.fees ?? ""} onChange={(e) => update(["fees"], e.target.value===""?null:Number(e.target.value))}/>
+              </div>
+            </div>
+
+            <div>
+              <Label>Executed At</Label>
               <Input
-                id="strikePrice"
-                type="number"
-                step="0.01"
-                value={tradeData.strikePrice || ''}
-                onChange={(e) => setTradeData({...tradeData, strikePrice: parseFloat(e.target.value)})}
-                className="mt-1"
-                placeholder="Strike price"
+                type="datetime-local"
+                value={form.executedAt ? form.executedAt.slice(0,19) : ""}
+                onChange={(e) => update(["executedAt"], e.target.value ? new Date(e.target.value).toISOString() : null)}
               />
             </div>
-            <div>
-              <Label htmlFor="expirationDate" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Expiration Date
-              </Label>
-              <Input
-                id="expirationDate"
-                type="date"
-                value={tradeData.expirationDate || ''}
-                onChange={(e) => setTradeData({...tradeData, expirationDate: e.target.value})}
-                className="mt-1"
-              />
-            </div>
-          </div>
-        )}
 
-        <div>
-          <Label htmlFor="date">Trade Date</Label>
-          <Input
-            id="date"
-            type="datetime-local"
-            value={tradeData.date ? new Date(tradeData.date).toISOString().slice(0, 16) : ''}
-            onChange={(e) => setTradeData({...tradeData, date: e.target.value})}
-            className="mt-1"
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="notes">Notes</Label>
-          <Textarea
-            id="notes"
-            placeholder="Add your trading notes, strategy, or market conditions..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="mt-1"
-            rows={3}
-          />
-        </div>
-
-        <div>
-          <Label>Tags</Label>
-          <div className="flex gap-2 mt-2 mb-2 flex-wrap">
-            {tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="flex items-center gap-1">
-                <Tag className="h-3 w-3" />
-                {tag}
-                <button onClick={() => removeTag(tag)} className="ml-1 hover:text-red-500">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Add tag..."
-              value={newTag}
-              onChange={(e) => setNewTag(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addTag()}
-            />
-            <Button onClick={addTag} variant="outline" size="sm">
-              Add
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex gap-3 pt-4">
-          <Button onClick={handleSave} disabled={saving} className="flex-1">
-            {saving ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Saving...
-              </>
-            ) : (
-              <>
-                <Check className="h-4 w-4 mr-2" />
-                Save Trade
-              </>
+            {form.instrument.assetType === "OPTION" && (
+              <div className="space-y-3 border rounded-md p-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label>Right</Label>
+                    <Input value={form.instrument.option?.right ?? ""} onChange={(e) => update(["instrument","option","right"], e.target.value as any)} />
+                  </div>
+                  <div>
+                    <Label>Strike</Label>
+                    <Input type="number" value={form.instrument.option?.strike ?? ""} onChange={(e) => update(["instrument","option","strike"], e.target.value===""?null:Number(e.target.value))}/>
+                  </div>
+                  <div>
+                    <Label>Expiration</Label>
+                    <Input type="date" value={form.instrument.option?.expiration ?? ""} onChange={(e) => update(["instrument","option","expiration"], e.target.value || null)} />
+                  </div>
+                </div>
+                <div>
+                  <Label>Contracts</Label>
+                  <Input type="number" value={form.instrument.option?.contracts ?? ""} onChange={(e) => update(["instrument","option","contracts"], e.target.value===""?null:Number(e.target.value))}/>
+                </div>
+              </div>
             )}
-          </Button>
-          <Button onClick={onReject} variant="outline">
-            <X className="h-4 w-4 mr-2" />
+
+            <div>
+              <Label>Notes</Label>
+              <Textarea value={form.notes ?? ""} onChange={(e) => update(["notes"], e.target.value)} />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label>Screenshot Preview</Label>
+            <div className="rounded-md border overflow-hidden">
+              {previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={previewUrl} alt="Trade screenshot" className="w-full object-contain max-h-[420px]" />
+              ) : (
+                <div className="p-6 text-sm text-slate-500">No image</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="mt-6">
+          <Button variant="ghost" onClick={() => { setOpen(false); onReject(); }} disabled={saving}>
             Cancel
           </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Saving..." : "Save Trade"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
